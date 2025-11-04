@@ -1,0 +1,52 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    environment:
+      - CORS_ORIGINS=http://localhost:5173
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      # Evita sobrescrever node_modules caso exista
+      - /app/__pycache__
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app
+    depends_on:
+      - redis
+      - db
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    environment:
+      - VITE_API_URL=ws://localhost:8000
+      - CHOKIDAR_USEPOLLING=true # Melhora detecção de mudanças no Windows
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/web
+      - /web/node_modules # Preserva node_modules no container
+    command: npm run dev -- --host 0.0.0.0
+    depends_on:
+      - api
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata: {}
