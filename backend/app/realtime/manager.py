@@ -17,41 +17,51 @@ class ConnectionManager:
     def __init__(self):
         self.tables: Dict[str, List[Connection]] = {}
         self.holdem_state: Dict[str, HoldemTableState] = {}
+        # Armazena informações de mesas criadas (mesmo que vazias)
+        self.created_tables: Dict[str, Dict] = {}  # {table_id: {game, name, created_at}}
 
     async def connect(self, websocket: WebSocket, *, game: Optional[str], table: str, nick: str) -> None:
         await websocket.accept()
         table_id = table if table != "new" else f"{game}-table-1"
         
-        # Verifica se a mesa está cheia ANTES de adicionar a conexão
-        if game == "holdem":
-            st = self.holdem_state.setdefault(table_id, HoldemTableState())
-            # Verifica se o jogador já está na mesa (reconexão)
-            if nick not in st.players:
-                # Se não está na mesa, verifica se há espaço
-                # IMPORTANTE: Usa > em vez de >= para garantir que não permite 9 jogadores
-                if len(st.players) > st.max_players - 1:
-                    await websocket.send_text(json.dumps(error_message("Mesa cheia. Máximo de 9 jogadores.")))
-                    await websocket.close()
-                    return
-        
+        # Adiciona a conexão primeiro
         conn = Connection(websocket, nick, table_id, game or "")
         self.tables.setdefault(table_id, []).append(conn)
         
         # track player in game state
         if game == "holdem":
             st = self.holdem_state.setdefault(table_id, HoldemTableState())
+            
+            # Remove jogadores desconectados da lista antes de verificar
+            # (jogadores que estão em st.players mas não estão mais conectados)
+            connected_nicks = [c.nick for c in self.tables.get(table_id, [])]
+            st.players = [p for p in st.players if p in connected_nicks]
+            
+            # Verifica se o jogador já está na mesa (reconexão)
+            if nick not in st.players:
+                # Se não está na mesa, verifica se há espaço
+                # Permite até max_players jogadores (9 no caso padrão)
+                print(f"[DEBUG] Tentando adicionar jogador {nick}. Jogadores atuais: {len(st.players)}/{st.max_players}, Lista: {st.players}")
+                if len(st.players) >= st.max_players:
+                    # Remove a conexão se não conseguiu adicionar o jogador
+                    self.tables[table_id] = [c for c in self.tables.get(table_id, []) if c.websocket is not websocket]
+                    print(f"[DEBUG] Mesa cheia! {len(st.players)} >= {st.max_players}. Removendo conexão.")
+                    await websocket.send_text(json.dumps(error_message(f"Mesa cheia. Máximo de {st.max_players} jogadores.")))
+                    await websocket.close()
+                    return
+            
             # Verifica novamente antes de adicionar (proteção extra)
             if nick not in st.players and len(st.players) >= st.max_players:
                 # Remove a conexão se não conseguiu adicionar o jogador
                 self.tables[table_id] = [c for c in self.tables.get(table_id, []) if c.websocket is not websocket]
-                await websocket.send_text(json.dumps(error_message("Mesa cheia. Máximo de 8 jogadores.")))
+                await websocket.send_text(json.dumps(error_message(f"Mesa cheia. Máximo de {st.max_players} jogadores.")))
                 await websocket.close()
                 return
             success = st.add_player(nick)
             if not success:
                 # Remove a conexão se não conseguiu adicionar o jogador
                 self.tables[table_id] = [c for c in self.tables.get(table_id, []) if c.websocket is not websocket]
-                await websocket.send_text(json.dumps(error_message("Mesa cheia. Máximo de 8 jogadores.")))
+                await websocket.send_text(json.dumps(error_message(f"Mesa cheia. Máximo de {st.max_players} jogadores.")))
                 await websocket.close()
                 return
         await self.broadcast_state(table_id)
@@ -309,5 +319,171 @@ class ConnectionManager:
         # Se chegou no showdown, calcula vencedores
         if st.street == "showdown":
             st.get_winner()
+
+    def create_table(self, table_id: str, game: str, name: Optional[str] = None) -> Dict:
+        """Cria uma nova mesa (mesmo que vazia)"""
+        if table_id in self.created_tables:
+            return {"error": "Mesa já existe"}
+        
+        # Inicializa o estado do jogo se for holdem
+        if game == "holdem":
+            self.holdem_state.setdefault(table_id, HoldemTableState())
+        
+        # Armazena informações da mesa
+        self.created_tables[table_id] = {
+            "game": game,
+            "name": name or table_id,
+            "created_at": None  # Poderia usar datetime se necessário
+        }
+        
+        # Inicializa lista vazia de conexões se não existir
+        if table_id not in self.tables:
+            self.tables[table_id] = []
+        
+        return {
+            "id": table_id,
+            "game": game,
+            "name": name or table_id,
+            "players": [],
+            "player_count": 0,
+            "max_players": 9 if game == "holdem" else 4,
+            "started": False,
+        }
+
+    def get_tables_info(self) -> List[Dict]:
+        """Retorna informações de todas as salas/tabelas (incluindo vazias)"""
+        tables = []
+        
+        # Adiciona mesas criadas (mesmo que vazias)
+        for table_id, table_info in self.created_tables.items():
+            conns = self.tables.get(table_id, [])
+            game = table_info.get("game", "unknown")
+            players = [c.nick for c in conns]
+            
+            # Obtém informações do estado do jogo se for holdem
+            started = False
+            if game == "holdem" and table_id in self.holdem_state:
+                st = self.holdem_state[table_id]
+                started = st.started
+                players = st.players.copy()
+            
+            table_data = {
+                "id": table_id,
+                "game": game,
+                "name": table_info.get("name", table_id),
+                "players": players,
+                "player_count": len(players),
+                "max_players": 9 if game == "holdem" else 4,
+                "started": started,
+            }
+            tables.append(table_data)
+        
+        # Adiciona mesas que têm conexões mas não foram criadas explicitamente (legacy)
+        for table_id, conns in self.tables.items():
+            if table_id not in self.created_tables and conns:
+                game = conns[0].game if conns else "unknown"
+                players = [c.nick for c in conns]
+                
+                # Obtém informações do estado do jogo se for holdem
+                started = False
+                if game == "holdem" and table_id in self.holdem_state:
+                    st = self.holdem_state[table_id]
+                    started = st.started
+                    players = st.players.copy()
+                
+                table_data = {
+                    "id": table_id,
+                    "game": game,
+                    "name": table_id,
+                    "players": players,
+                    "player_count": len(players),
+                    "max_players": 9 if game == "holdem" else 4,
+                    "started": started,
+                }
+                tables.append(table_data)
+        
+        return tables
+
+    def get_table_info(self, table_id: str) -> Optional[Dict]:
+        """Retorna informações detalhadas de uma sala específica"""
+        # Verifica se a mesa foi criada (mesmo que vazia)
+        if table_id not in self.created_tables and table_id not in self.tables:
+            return None
+        
+        # Obtém informações da mesa criada ou usa defaults
+        if table_id in self.created_tables:
+            table_info_data = self.created_tables[table_id]
+            game = table_info_data.get("game", "unknown")
+        else:
+            # Mesa legacy (não foi criada explicitamente)
+            conns = self.tables.get(table_id, [])
+            if not conns:
+                return None
+            game = conns[0].game if conns else "unknown"
+        
+        conns = self.tables.get(table_id, [])
+        players = [c.nick for c in conns] if conns else []
+        
+        # Obtém informações do estado do jogo se for holdem
+        started = False
+        street = None
+        pot = 0
+        dealer = None
+        sb = None
+        bb = None
+        
+        if game == "holdem" and table_id in self.holdem_state:
+            try:
+                st = self.holdem_state[table_id]
+                started = getattr(st, "started", False)
+                street = getattr(st, "street", None)
+                pot = getattr(st, "pot", 0)
+                dealer = getattr(st, "dealer", None)
+                sb = getattr(st, "sb", None)
+                bb = getattr(st, "bb", None)
+                # Atualiza players do estado do jogo se existir
+                if hasattr(st, "players"):
+                    players = st.players.copy() if st.players else []
+            except Exception as e:
+                # Se houver erro ao acessar o estado, usa valores padrão
+                print(f"[ERROR] Erro ao acessar estado da mesa {table_id}: {e}")
+                started = False
+                street = None
+                pot = 0
+                dealer = None
+                sb = None
+                bb = None
+                # Garante que players está definido
+                if not players:
+                    players = []
+        
+        # Determina slots disponíveis (1-9 para holdem, 1-4 para sueca)
+        max_players = 9 if game == "holdem" else 4
+        # Slots ocupados são baseados na ordem dos jogadores (1 = primeiro, 2 = segundo, etc)
+        occupied_slots = list(range(1, len(players) + 1))
+        available_slots = [i for i in range(1, max_players + 1) if i not in occupied_slots]
+        
+        # Obtém nome da mesa se foi criada explicitamente
+        table_name = None
+        if table_id in self.created_tables:
+            table_name = self.created_tables[table_id].get("name", table_id)
+        
+        table_info = {
+            "id": table_id,
+            "game": game,
+            "name": table_name or table_id,
+            "players": players,
+            "player_count": len(players),
+            "max_players": max_players,
+            "started": started,
+            "street": street,
+            "pot": pot,
+            "dealer": dealer,
+            "sb": sb,
+            "bb": bb,
+            "occupied_slots": list(occupied_slots),
+            "available_slots": available_slots,
+        }
+        return table_info
 
 

@@ -34,6 +34,12 @@ export function Table({ params, onLeave }: Props) {
   const [customPositions, setCustomPositions] = useState<
     Record<string, { x: number; y: number }>
   >({});
+  const customPositionsRef = useRef<Record<string, { x: number; y: number }>>(
+    {}
+  );
+  useEffect(() => {
+    customPositionsRef.current = customPositions;
+  }, [customPositions]);
   const [draggingPlayer, setDraggingPlayer] = useState<string | null>(null);
   const [useCustomPositions, setUseCustomPositions] = useState(false);
   const [clickToPositionMode, setClickToPositionMode] = useState(false);
@@ -44,6 +50,209 @@ export function Table({ params, onLeave }: Props) {
     Array<{ x: number; y: number; assigned: string | null }>
   >([]);
   const MAX_PLAYERS = 9; // Máximo de jogadores na mesa
+
+  // Posição do pote (em porcentagem do wrapper) — inicialização antecipada
+  const loadPotPositionEarlyTopA = () => {
+    try {
+      const saved = localStorage.getItem("poker_pot_position");
+      if (saved) {
+        const p = JSON.parse(saved);
+        return {
+          potXPercent: typeof p.potXPercent === "number" ? p.potXPercent : 50,
+          potYPercent: typeof p.potYPercent === "number" ? p.potYPercent : 45,
+        };
+      }
+    } catch {}
+    return { potXPercent: 50, potYPercent: 45 };
+  };
+  const savedPotTopA = loadPotPositionEarlyTopA();
+  const [potXPercent, setPotXPercent] = useState<number>(
+    savedPotTopA.potXPercent
+  );
+  const [potYPercent, setPotYPercent] = useState<number>(
+    savedPotTopA.potYPercent
+  );
+
+  // Posição do texto do pote (separada) — inicialização antecipada
+  // Inicializa com o centro do pote; depois será atualizado se CUSTOM_POSITIONS["PotValue"] existir
+  const [potValueXPercent, setPotValueXPercent] = useState<number>(
+    savedPotTopA.potXPercent
+  );
+  const [potValueYPercent, setPotValueYPercent] = useState<number>(
+    savedPotTopA.potYPercent
+  );
+
+  // Atualiza a posição do texto do pote quando customPositions carregar
+  useEffect(() => {
+    if (
+      customPositions["PotValue"] &&
+      typeof customPositions["PotValue"].x === "number"
+    ) {
+      setPotValueXPercent(customPositions["PotValue"].x);
+      setPotValueYPercent(customPositions["PotValue"].y);
+    }
+  }, [customPositions]);
+  const [clickToPositionPotValue, setClickToPositionPotValue] =
+    useState<boolean>(false);
+  const [clickToPositionPotBase, setClickToPositionPotBase] =
+    useState<boolean>(false);
+  const [clickToPositionChip, setClickToPositionChip] =
+    useState<boolean>(false);
+
+  // Estados para ajuste de posição das fichas de posição (D/SB/BB)
+  const [
+    selectedPositionChipForAdjustment,
+    setSelectedPositionChipForAdjustment,
+  ] = useState<string | null>(null);
+  const [positionChipXPercent, setPositionChipXPercent] = useState<number>(50);
+  const [positionChipYPercent, setPositionChipYPercent] = useState<number>(50);
+
+  // Estados para ajuste de posição dos stacks de fichas
+  const [selectedStackForAdjustment, setSelectedStackForAdjustment] = useState<
+    string | null
+  >(null);
+  const [stackXPercent, setStackXPercent] = useState<number>(50);
+  const [stackYPercent, setStackYPercent] = useState<number>(50);
+  const [stackRotationDeg, setStackRotationDeg] = useState<number>(0);
+
+  // Carrega posições das fichas de posição quando um slot é selecionado
+  useEffect(() => {
+    if (selectedPositionChipForAdjustment) {
+      const positionChipKey = `PositionChip ${selectedPositionChipForAdjustment}`;
+      // PRIORIDADE 1: Busca primeiro do customPositions atual (que pode ter sido editado e salvo)
+      let positionChipPos = customPositions[positionChipKey] as any;
+
+      // PRIORIDADE 2: Se não encontrar no customPositions atual, tenta buscar do CUSTOM_POSITIONS do código
+      if (
+        !positionChipPos ||
+        typeof positionChipPos.x !== "number" ||
+        typeof positionChipPos.y !== "number"
+      ) {
+        positionChipPos = (CUSTOM_POSITIONS as any)[positionChipKey];
+      }
+
+      // Se encontrou uma posição válida, carrega nos sliders
+      if (
+        positionChipPos &&
+        typeof positionChipPos.x === "number" &&
+        typeof positionChipPos.y === "number"
+      ) {
+        setPositionChipXPercent(positionChipPos.x);
+        setPositionChipYPercent(positionChipPos.y);
+      } else {
+        // Se não houver posição customizada, usa a posição do slot como referência
+        const slotPos =
+          customPositions[selectedPositionChipForAdjustment] ||
+          (CUSTOM_POSITIONS as any)[selectedPositionChipForAdjustment];
+        if (
+          slotPos &&
+          typeof slotPos.x === "number" &&
+          typeof slotPos.y === "number"
+        ) {
+          setPositionChipXPercent(slotPos.x - 5); // Offset padrão à esquerda
+          setPositionChipYPercent(slotPos.y + 10); // Offset padrão abaixo
+        } else {
+          setPositionChipXPercent(50);
+          setPositionChipYPercent(50);
+        }
+      }
+    }
+  }, [selectedPositionChipForAdjustment, customPositions]);
+
+  // Carrega posições dos stacks quando um slot é selecionado
+  useEffect(() => {
+    if (selectedStackForAdjustment) {
+      const stackKey = `Stack ${selectedStackForAdjustment}`;
+      // PRIORIDADE 1: Busca primeiro do customPositions atual (que pode ter sido editado e salvo)
+      let stackPos = customPositions[stackKey] as any;
+
+      // PRIORIDADE 2: Se não encontrar no customPositions atual, tenta buscar do CUSTOM_POSITIONS do código
+      if (
+        !stackPos ||
+        typeof stackPos.x !== "number" ||
+        typeof stackPos.y !== "number"
+      ) {
+        stackPos = (CUSTOM_POSITIONS as any)[stackKey];
+      }
+
+      // Se encontrou uma posição válida, carrega nos sliders
+      if (
+        stackPos &&
+        typeof stackPos.x === "number" &&
+        typeof stackPos.y === "number"
+      ) {
+        console.log(`Carregando stack ${selectedStackForAdjustment}:`, {
+          source: customPositions[stackKey]
+            ? "customPositions"
+            : "CUSTOM_POSITIONS",
+          pos: stackPos,
+        });
+        setStackXPercent(stackPos.x);
+        setStackYPercent(stackPos.y);
+        if (typeof stackPos.angle === "number") {
+          setStackRotationDeg((stackPos.angle * 180) / Math.PI);
+        } else if (typeof stackPos.rotation === "number") {
+          setStackRotationDeg((stackPos.rotation * 180) / Math.PI);
+        } else {
+          setStackRotationDeg(0);
+        }
+      } else {
+        // Se não houver posição customizada, usa a posição do slot como referência
+        const slotPos =
+          customPositions[selectedStackForAdjustment] ||
+          (CUSTOM_POSITIONS as any)[selectedStackForAdjustment];
+        if (
+          slotPos &&
+          typeof slotPos.x === "number" &&
+          typeof slotPos.y === "number"
+        ) {
+          setStackXPercent(slotPos.x);
+          setStackYPercent(slotPos.y + 10); // Offset padrão abaixo do slot
+        } else {
+          setStackXPercent(50);
+          setStackYPercent(50);
+        }
+        setStackRotationDeg(0);
+      }
+    }
+  }, [selectedStackForAdjustment, customPositions]);
+
+  const [redrawTick, setRedrawTick] = useState<number>(0);
+  useEffect(() => {
+    setRedrawTick((t) => t + 1);
+  }, [
+    potXPercent,
+    potYPercent,
+    potValueXPercent,
+    potValueYPercent,
+    stackXPercent,
+    stackYPercent,
+    stackRotationDeg,
+    positionChipXPercent,
+    positionChipYPercent,
+  ]);
+
+  // Mantém customPositions.PotValue em sincronia com os sliders (aplica durante o ajuste)
+  useEffect(() => {
+    const roundedX = Math.max(
+      0,
+      Math.min(100, Math.round(potValueXPercent * 10) / 10)
+    );
+    const roundedY = Math.max(
+      0,
+      Math.min(100, Math.round(potValueYPercent * 10) / 10)
+    );
+    if (
+      !customPositions["PotValue"] ||
+      customPositions["PotValue"].x !== roundedX ||
+      customPositions["PotValue"].y !== roundedY
+    ) {
+      setCustomPositions({
+        ...customPositions,
+        PotValue: { x: roundedX, y: roundedY },
+      });
+    }
+  }, [potValueXPercent, potValueYPercent]);
 
   // Posições das cartas (comunitárias e dos jogadores)
   // Carrega posições salvas ou usa valores padrão
@@ -87,57 +296,110 @@ export function Table({ params, onLeave }: Props) {
   // Posições customizadas geradas a partir das posições marcadas
   // Substitua os valores no objeto DEFAULT_POSITIONS no início do componente
   const DEFAULT_POSITIONS = {
-    radiusX: 0.541661,
-    radiusY: 0.348744,
-    angleOffset: 0.014066292748709,
+    radiusX: 0.528886,
+    radiusY: 0.281713,
+    angleOffset: -0.022897621959915,
     stretchFactor: 1.03,
   };
 
   // Posições exatas (para uso direto se preferir)
   const CUSTOM_POSITIONS = {
     Croupier: {
-      x: 50.284437996334766,
-      y: 12.97539149888143,
+      x: 49.61247709224191,
+      y: 19.015659955257274,
     },
     guest: {
       x: 78.92544243589428,
       y: 25.4865778201927,
     },
     "Slot 1": {
-      x: 67.6943341478314,
-      y: 13.870246085011187,
+      x: 69.12983752546066,
+      y: 18.09748780109316,
     },
     "Slot 2": {
-      x: 81.50007635919366,
-      y: 27.181208053691275,
+      x: 78.75114538790471,
+      y: 29.418344519015662,
     },
     "Slot 3": {
-      x: 79.78963042150275,
-      y: 72.03579418344519,
+      x: 78.83094121548008,
+      y: 61.24454713174819,
     },
     "Slot 4": {
-      x: 65.18975259621259,
-      y: 79.53020134228188,
+      x: 68.9479418312728,
+      y: 72.50030173974515,
     },
     "Slot 5": {
-      x: 49.368127672571774,
-      y: 79.19463087248322,
+      x: 49.61247709224191,
+      y: 74.16107382550335,
     },
     "Slot 6": {
-      x: 33.11889126450825,
-      y: 78.29977628635348,
+      x: 30.30887293830177,
+      y: 73.04250559284117,
     },
     "Slot 7": {
-      x: 19.61858582773366,
-      y: 69.57494407158836,
+      x: 20.44242338117569,
+      y: 60.582443919513075,
     },
     "Slot 8": {
-      x: 18.824450213805743,
-      y: 25.838926174496645,
+      x: 20.260527686987825,
+      y: 28.249737055364932,
     },
     "Slot 9": {
-      x: 28.231902871105678,
-      y: 14.317673378076062,
+      x: 30.675397067806966,
+      y: 18.232662192393736,
+    },
+    PotValue: {
+      x: 50,
+      y: 39.5,
+    },
+    Pot: {
+      x: 50,
+      y: 27.8,
+    },
+    "Stack Slot 1": {
+      x: 64.9,
+      y: 25.9,
+      angle: 0.3490658503988659,
+    },
+    "Stack Slot 2": {
+      x: 74.3,
+      y: 33.2,
+      angle: 1.0471975511965976,
+    },
+    "Stack Slot 3": {
+      x: 74.1,
+      y: 59.6,
+      angle: -1.0821041362364843,
+    },
+    "Stack Slot 4": {
+      x: 63.9,
+      y: 64.6,
+      angle: 0,
+    },
+    "Stack Slot 5": {
+      x: 46.9,
+      y: 64.8,
+      angle: 0,
+    },
+    "Stack Slot 6": {
+      x: 30.30887293830177,
+      y: 64.8,
+      angle: 0,
+    },
+    "Stack Slot 7": {
+      x: 22.5,
+      y: 51.2,
+      angle: 0.9250245035569946,
+    },
+    "Stack Slot 8": {
+      x: 23.1,
+      y: 38.24973705536493,
+      angle: -0.9773843811168246,
+    },
+    "Stack Slot 9": {
+      x: 31.4,
+      y: 25.6,
+      angle: 0,
     },
   };
 
@@ -198,21 +460,10 @@ export function Table({ params, onLeave }: Props) {
 
   // Carrega posições customizadas ao montar
   useEffect(() => {
-    const saved = loadCustomPositions();
-    // Se não houver posições salvas no localStorage, usa CUSTOM_POSITIONS do código
-    if (
-      Object.keys(saved).length === 0 &&
-      Object.keys(CUSTOM_POSITIONS).length > 0
-    ) {
+    // Sempre usa CUSTOM_POSITIONS do código como base (não usa localStorage)
+    // Isso garante que todos os usuários tenham a mesma visão
+    if (Object.keys(CUSTOM_POSITIONS).length > 0) {
       setCustomPositions(CUSTOM_POSITIONS);
-      setUseCustomPositions(true);
-      // Salva no localStorage para persistência
-      localStorage.setItem(
-        "poker_custom_positions",
-        JSON.stringify(CUSTOM_POSITIONS)
-      );
-    } else if (Object.keys(saved).length > 0) {
-      setCustomPositions(saved);
       setUseCustomPositions(true);
     }
   }, []);
@@ -298,6 +549,116 @@ export function Table({ params, onLeave }: Props) {
             // Se é a vez do jogador, inicializar com call amount
             setBetAmount(msg.callAmount || 0);
           }
+
+          // Disparo de animação de distribuição quando entrar em preflop recém-iniciado
+          if (Boolean(msg.started) && (msg.street || null) === "preflop") {
+            // anima cartas "back" saindo do croupier para cada slot visível
+            const wrapper = document.getElementById("table-canvas-wrapper");
+            if (wrapper) {
+              const w = wrapper.clientWidth;
+              const h = wrapper.clientHeight;
+              // posição do croupier
+              const cPos = customPositionsRef.current?.["Croupier"]; // ver abaixo uso de ref
+              const cx = cPos ? (cPos.x / 100) * w : w * 0.5;
+              const cy = cPos ? (cPos.y / 100) * h : h * 0.12;
+              const targets = (msg.players || []).slice(0, 9);
+              const anims: AnimCard[] = [];
+
+              // Limpa animações anteriores
+              setDealAnims([]);
+
+              targets.forEach((p: string, idx: number) => {
+                // usa posições calculadas previamente via customPositions (slots)
+                const slotName = `Slot ${idx + 1}`;
+                const tPos =
+                  customPositionsRef.current?.[slotName] ||
+                  customPositionsRef.current?.[p];
+                if (tPos) {
+                  const tx = (tPos.x / 100) * w;
+                  const ty = (tPos.y / 100) * h;
+                  const id = `deal-${Date.now()}-${idx}`;
+
+                  // Inicia a carta na posição do croupier
+                  anims.push({ id, x: cx, y: cy, opacity: 1 });
+
+                  // Anima a carta para o jogador com delay escalonado
+                  setTimeout(() => {
+                    setDealAnims((prev: AnimCard[]) => {
+                      const existing = prev.find((a) => a.id === id);
+                      if (existing) {
+                        return prev.map((a: AnimCard) =>
+                          a.id === id ? { ...a, x: tx, y: ty, opacity: 1 } : a
+                        );
+                      }
+                      return prev;
+                    });
+
+                    // Remove a animação após completar
+                    setTimeout(
+                      () =>
+                        setDealAnims((prev: AnimCard[]) =>
+                          prev.filter((a: AnimCard) => a.id !== id)
+                        ),
+                      800
+                    );
+                  }, 100 + idx * 150); // Delay escalonado para cada jogador
+                }
+              });
+
+              if (anims.length) {
+                setDealAnims(anims);
+              }
+            }
+          }
+
+          // Animação de fichas para última ação com valor
+          const actions = msg.recentActions || [];
+          if (actions.length > prevRecentLenRef.current) {
+            const last = actions[actions.length - 1];
+            if (last && last.amount && last.player) {
+              const wrapper = document.getElementById("table-canvas-wrapper");
+              if (wrapper) {
+                const w = wrapper.clientWidth;
+                const h = wrapper.clientHeight;
+                const playerName: string = last.player;
+                // encontra índice do jogador na lista atual
+                const pIdx = (msg.players || []).indexOf(playerName);
+                const slotName = pIdx >= 0 ? `Slot ${pIdx + 1}` : playerName;
+                const sPos =
+                  customPositionsRef.current?.[slotName] ||
+                  customPositionsRef.current?.[playerName];
+                if (sPos) {
+                  const sx = (sPos.x / 100) * w;
+                  const sy = (sPos.y / 100) * h;
+                  const potX = (potXPercent / 100) * w;
+                  const potY = (potYPercent / 100) * h - 20;
+                  const id = `chip-${Date.now()}-${playerName}`;
+                  // cria chip na origem
+                  setChipAnims((prev) => [
+                    ...prev,
+                    { id, x: sx, y: sy, opacity: 1 },
+                  ]);
+                  // move ao pote
+                  setTimeout(() => {
+                    setChipAnims((prev) =>
+                      prev.map((c) =>
+                        c.id === id
+                          ? { ...c, x: potX, y: potY, opacity: 0.2 }
+                          : c
+                      )
+                    );
+                    // remove depois
+                    setTimeout(
+                      () =>
+                        setChipAnims((prev) => prev.filter((c) => c.id !== id)),
+                      500
+                    );
+                  }, 20);
+                }
+              }
+            }
+          }
+          prevRecentLenRef.current = actions.length;
         } else if (msg.type === "error") {
           // Exibe mensagem de erro (ex: mesa cheia)
           setErrorMessage(msg.text || msg.error || "Erro desconhecido");
@@ -313,7 +674,7 @@ export function Table({ params, onLeave }: Props) {
     );
     wsRef.current = ws;
     return () => ws.close();
-  }, [wsUrl]);
+  }, [wsUrl, potXPercent, potYPercent]);
 
   // Ajusta tamanho do canvas ao container e desenha a mesa
   useEffect(() => {
@@ -614,47 +975,29 @@ export function Table({ params, onLeave }: Props) {
           y = pos.y;
         }
 
-        // Cor baseado em posição
+        // Cor baseado em posição (agora não muda mais para dealer/SB/BB, pois usamos fichas separadas)
         let bgColor = isRealPlayer ? "#4a5568" : "#6b7280"; // Mais claro para slots vazios
         let borderColor = isRealPlayer ? "#2d3748" : "#4b5563";
-        let label = "";
 
-        // Labels só aparecem para jogadores reais
-        if (isRealPlayer) {
-          if (dealer === player) {
-            bgColor = "#f59e0b";
-            borderColor = "#d97706";
-            label = "D";
-          }
-          if (sb === player) {
-            bgColor = "#3b82f6";
-            borderColor = "#2563eb";
-            label = label ? label + "/SB" : "SB";
-          }
-          if (bb === player) {
-            bgColor = "#8b5cf6";
-            borderColor = "#7c3aed";
-            label = label ? label + "/BB" : "BB";
-          }
-          if (toAct === player && started) {
-            borderColor = "#10b981";
-            ctx.strokeStyle = "#10b981";
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.arc(x, y, 42, 0, 2 * Math.PI);
-            ctx.stroke();
-          }
-        } else {
-          // Slots vazios têm borda tracejada no modo de ajuste
-          if (showPositionAdjuster) {
-            ctx.setLineDash([5, 5]);
-            ctx.strokeStyle = "#9ca3af";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(x, y, 37, 0, 2 * Math.PI);
-            ctx.stroke();
-            ctx.setLineDash([]);
-          }
+        // Destaque para jogador que deve agir
+        if (isRealPlayer && toAct === player && started) {
+          borderColor = "#10b981";
+          ctx.strokeStyle = "#10b981";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(x, y, 42, 0, 2 * Math.PI);
+          ctx.stroke();
+        }
+
+        // Slots vazios têm borda tracejada no modo de ajuste
+        if (!isRealPlayer && showPositionAdjuster) {
+          ctx.setLineDash([5, 5]);
+          ctx.strokeStyle = "#9ca3af";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(x, y, 37, 0, 2 * Math.PI);
+          ctx.stroke();
+          ctx.setLineDash([]);
         }
 
         // No modo de ajuste com posições customizadas, os jogadores são renderizados como elementos React
@@ -722,19 +1065,413 @@ export function Table({ params, onLeave }: Props) {
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 0;
 
-        // Label (D/SB/BB) - menor e mais discreto
-        if (label) {
+        // Fichas na frente do jogador (baseado no stack) - organizadas horizontalmente em pilhas com 5 cores
+        if (stack > 0) {
+          // Busca posição customizada do stack para este jogador/slot
+          // Usa o slotName já calculado no início do loop (linha 829)
+          const stackPosKey = `Stack ${slotName}`;
+          // Primeiro tenta buscar do customPositions atual (que pode ter sido editado)
+          let customStackPos = customPositions[stackPosKey] as any;
+
+          // Se não encontrar no customPositions, tenta buscar do CUSTOM_POSITIONS do código
+          if (
+            !customStackPos ||
+            typeof customStackPos.x !== "number" ||
+            typeof customStackPos.y !== "number"
+          ) {
+            customStackPos = (CUSTOM_POSITIONS as any)[stackPosKey];
+            // Debug: verifica se encontrou no CUSTOM_POSITIONS
+            if (customStackPos) {
+              console.log(
+                `Stack ${slotName} encontrado no CUSTOM_POSITIONS:`,
+                customStackPos
+              );
+            }
+          }
+
+          // Usa posição customizada se existir, senão usa posição padrão relativa ao jogador
+          let chipBaseX: number;
+          let chipBaseY: number;
+          let stackAngle: number = 0; // Ângulo de rotação do stack (em radianos)
+
+          if (
+            customStackPos &&
+            typeof customStackPos.x === "number" &&
+            typeof customStackPos.y === "number"
+          ) {
+            // Posição absoluta em porcentagem
+            chipBaseX = (customStackPos.x / 100) * width;
+            chipBaseY = (customStackPos.y / 100) * height;
+            // Ângulo de rotação se existir (verifica se é um objeto com angle/rotation)
+            if (typeof customStackPos.angle === "number") {
+              stackAngle = customStackPos.angle;
+            } else if (typeof customStackPos.rotation === "number") {
+              stackAngle = customStackPos.rotation;
+            }
+          } else {
+            // Posição padrão relativa ao jogador
+            const chipOffsetX = y < centerY ? 0 : 0; // Offset horizontal
+            const chipOffsetY = y < centerY ? 65 : 60; // Offset vertical (frente do jogador)
+            chipBaseX = x + chipOffsetX;
+            chipBaseY = y + chipOffsetY;
+            // Calcula ângulo padrão baseado na posição do jogador na mesa
+            const playerAngle = Math.atan2(y - centerY, x - centerX);
+            stackAngle = playerAngle; // Stack aponta para o centro da mesa
+          }
+
+          // Define 4 cores de fichas diferentes (como fichas reais de poker)
+          const chipColors = [
+            {
+              color: "#ef4444",
+              borderColor: "#991b1b",
+              highlight: "#fca5a5",
+              dark: "#7f1d1d",
+            }, // Vermelho
+            {
+              color: "#3b82f6",
+              borderColor: "#1e40af",
+              highlight: "#93c5fd",
+              dark: "#1e3a8a",
+            }, // Azul
+            {
+              color: "#10b981",
+              borderColor: "#047857",
+              highlight: "#6ee7b7",
+              dark: "#064e3b",
+            }, // Verde
+            {
+              color: "#fbbf24",
+              borderColor: "#d97706",
+              highlight: "#fde68a",
+              dark: "#92400e",
+            }, // Amarelo
+          ];
+
+          const chipRadius = 11; // Raio da ficha (reduzido)
+          const chipThickness = 2.5; // Espessura visual da ficha (reduzida proporcionalmente)
+          const chipsPerStack = 4; // Fichas por pilha (coluna) - sempre 4 fichas por coluna
+          const stackSpacing = 25; // Espaçamento horizontal entre pilhas (colunas)
+
+          // Calcula quantas pilhas (colunas) completas precisamos
+          // Cada coluna tem 4 fichas, então dividimos o stack por 4 para saber quantas colunas
+          const totalChips = Math.min(Math.floor(stack / 50) + 1, 200); // Máximo 200 fichas visíveis
+          const numStacks = Math.min(Math.ceil(totalChips / chipsPerStack), 4); // Máximo 4 colunas
+
+          // Salva contexto antes de aplicar rotação
+          ctx.save();
+
+          // Aplica transformação de rotação e translação para posicionar o stack
+          ctx.translate(chipBaseX, chipBaseY);
+          ctx.rotate(stackAngle);
+
+          // Desenha múltiplas pilhas de fichas lado a lado (relativas ao ponto de origem após rotação)
+          for (let stackIdx = 0; stackIdx < numStacks; stackIdx++) {
+            // Posição X relativa ao centro de rotação (ao longo do eixo horizontal rotacionado)
+            const stackX = stackIdx * stackSpacing;
+            const chipsInThisStack = Math.min(
+              chipsPerStack,
+              totalChips - stackIdx * chipsPerStack
+            );
+
+            // Usa a cor da coluna (cicla pelas 4 cores)
+            const chipColorIndex = stackIdx % chipColors.length;
+            const chipColor = chipColors[chipColorIndex].color;
+            const borderColor = chipColors[chipColorIndex].borderColor;
+            const highlightColor = chipColors[chipColorIndex].highlight;
+            const darkColor = chipColors[chipColorIndex].dark;
+
+            // Desenha cada ficha na pilha (empilhadas verticalmente)
+            for (let i = 0; i < chipsInThisStack; i++) {
+              const chipYPos = -i * chipThickness; // Empilhadas (negativo porque Y cresce para baixo)
+              // Leve offset horizontal alternado para dar profundidade à pilha
+              const offsetX = i % 2 === 0 ? 0 : 1;
+
+              // Ficha circular com efeito 3D realista
+              ctx.save();
+
+              // Sombra mais pronunciada para efeito 3D
+              ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+              ctx.shadowBlur = 5;
+              ctx.shadowOffsetX = 2;
+              ctx.shadowOffsetY = 2;
+
+              // Gradiente radial principal (do centro para fora)
+              const mainGradient = ctx.createRadialGradient(
+                stackX + offsetX,
+                chipYPos - chipThickness,
+                0,
+                stackX + offsetX,
+                chipYPos,
+                chipRadius
+              );
+              mainGradient.addColorStop(0, highlightColor); // Brilho no topo
+              mainGradient.addColorStop(0.3, chipColor); // Cor principal
+              mainGradient.addColorStop(0.8, chipColor); // Cor principal
+              mainGradient.addColorStop(1, darkColor); // Escuro na borda
+
+              // Círculo principal da ficha
+              ctx.beginPath();
+              ctx.arc(stackX + offsetX, chipYPos, chipRadius, 0, 2 * Math.PI);
+              ctx.fillStyle = mainGradient;
+              ctx.fill();
+
+              // Anel externo escuro (borda)
+              ctx.strokeStyle = darkColor;
+              ctx.lineWidth = 3;
+              ctx.stroke();
+
+              // Anel médio (transição)
+              ctx.strokeStyle = borderColor;
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              ctx.arc(
+                stackX + offsetX,
+                chipYPos,
+                chipRadius - 1,
+                0,
+                2 * Math.PI
+              );
+              ctx.stroke();
+
+              // Anel interno decorativo (brilho)
+              ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.arc(
+                stackX + offsetX,
+                chipYPos,
+                chipRadius * 0.65,
+                0,
+                2 * Math.PI
+              );
+              ctx.stroke();
+
+              // Linha decorativa horizontal no centro
+              ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(stackX + offsetX - chipRadius * 0.55, chipYPos);
+              ctx.lineTo(stackX + offsetX + chipRadius * 0.55, chipYPos);
+              ctx.stroke();
+
+              // Destaque superior (brilho) para efeito 3D
+              const highlightGradient = ctx.createRadialGradient(
+                stackX + offsetX - chipRadius * 0.3,
+                chipYPos - chipRadius * 0.3,
+                0,
+                stackX + offsetX - chipRadius * 0.3,
+                chipYPos - chipRadius * 0.3,
+                chipRadius * 0.6
+              );
+              highlightGradient.addColorStop(0, "rgba(255, 255, 255, 0.6)");
+              highlightGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+              ctx.fillStyle = highlightGradient;
+              ctx.beginPath();
+              ctx.arc(
+                stackX + offsetX,
+                chipYPos,
+                chipRadius * 0.6,
+                0,
+                2 * Math.PI
+              );
+              ctx.fill();
+
+              ctx.restore();
+            }
+          }
+
+          // Restaura contexto (remove rotação e translação)
+          ctx.restore();
+        }
+
+        // Prévia visual do stack durante ajuste
+        if (showPositionAdjuster && selectedStackForAdjustment === slotName) {
+          const previewX = (stackXPercent / 100) * width;
+          const previewY = (stackYPercent / 100) * height;
+          const previewAngle = (stackRotationDeg * Math.PI) / 180;
+
+          ctx.save();
+          ctx.translate(previewX, previewY);
+          ctx.rotate(previewAngle);
+
+          // Linha guia amarela mostrando a direção do stack
+          ctx.strokeStyle = "rgba(255, 255, 0, 0.6)";
+          ctx.lineWidth = 3;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(100, 0); // Linha horizontal indicando direção
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Círculo amarelo semi-transparente na posição do stack
+          ctx.fillStyle = "rgba(255, 255, 0, 0.3)";
+          ctx.beginPath();
+          ctx.arc(0, 0, 20, 0, 2 * Math.PI);
+          ctx.fill();
+
+          // Borda amarela
+          ctx.strokeStyle = "rgba(255, 255, 0, 0.8)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // Texto "Stack" na prévia
+          ctx.fillStyle = "rgba(255, 255, 0, 0.9)";
+          ctx.font = "bold 12px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("Stack", 0, 0);
+
+          ctx.restore();
+        }
+
+        // Fichas indicadoras de posição (D/SB/BB) ao invés de texto
+        let positionChip: {
+          color: string;
+          borderColor: string;
+          text: string;
+        } | null = null;
+        if (dealer === player) {
+          positionChip = {
+            color: "#f59e0b",
+            borderColor: "#d97706",
+            text: "D",
+          }; // Laranja para Dealer
+        } else if (sb === player) {
+          positionChip = {
+            color: "#3b82f6",
+            borderColor: "#2563eb",
+            text: "SB",
+          }; // Azul para Small Blind
+        } else if (bb === player) {
+          positionChip = {
+            color: "#8b5cf6",
+            borderColor: "#7c3aed",
+            text: "BB",
+          }; // Roxo para Big Blind
+        }
+
+        if (positionChip) {
+          const chipRadius = 14;
+
+          // Busca posição customizada da ficha de posição para este jogador/slot
+          const positionChipKey = `PositionChip ${slotName}`;
+          // Primeiro tenta buscar do customPositions atual (que pode ter sido editado)
+          let customPositionChipPos = customPositions[positionChipKey] as any;
+
+          // Se não encontrar no customPositions, tenta buscar do CUSTOM_POSITIONS do código
+          if (
+            !customPositionChipPos ||
+            typeof customPositionChipPos.x !== "number" ||
+            typeof customPositionChipPos.y !== "number"
+          ) {
+            customPositionChipPos = (CUSTOM_POSITIONS as any)[positionChipKey];
+          }
+
+          let chipX: number;
+          let chipY: number;
+
+          if (
+            customPositionChipPos &&
+            typeof customPositionChipPos.x === "number" &&
+            typeof customPositionChipPos.y === "number"
+          ) {
+            // Posição absoluta em porcentagem
+            chipX = (customPositionChipPos.x / 100) * width;
+            chipY = (customPositionChipPos.y / 100) * height;
+          } else {
+            // Posição padrão: à esquerda da stack de fichas, na mesma altura
+            const chipOffsetY = y < centerY ? 65 : 60; // Mesma posição Y da stack
+            chipY = y + chipOffsetY; // Mesma altura da stack
+            // Posiciona à esquerda da primeira pilha de fichas (não sobre o avatar)
+            const firstStackX = x; // Posição X da primeira pilha
+            chipX = firstStackX - chipRadius * 2.8; // À esquerda da primeira pilha
+          }
+
+          ctx.save();
+
+          // Sombra para dar profundidade
+          ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+          ctx.shadowBlur = 4;
+          ctx.shadowOffsetX = 2;
+          ctx.shadowOffsetY = 2;
+
+          // Gradiente radial para dar efeito 3D
+          const gradient = ctx.createRadialGradient(
+            chipX,
+            chipY - 2,
+            0,
+            chipX,
+            chipY,
+            chipRadius
+          );
+          gradient.addColorStop(0, positionChip.color);
+          gradient.addColorStop(0.7, positionChip.color);
+          gradient.addColorStop(1, positionChip.borderColor);
+
+          // Círculo principal da ficha
+          ctx.beginPath();
+          ctx.arc(chipX, chipY, chipRadius, 0, 2 * Math.PI);
+          ctx.fillStyle = gradient;
+          ctx.fill();
+
+          // Borda externa
+          ctx.strokeStyle = positionChip.borderColor;
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+
+          // Linha decorativa no centro
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(chipX, chipY, chipRadius * 0.6, 0, 2 * Math.PI);
+          ctx.stroke();
+
+          // Texto da posição dentro da ficha
           ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
-          ctx.shadowBlur = 3;
+          ctx.shadowBlur = 2;
           ctx.shadowOffsetX = 1;
           ctx.shadowOffsetY = 1;
           ctx.fillStyle = "#fff";
-          ctx.font = "bold 11px sans-serif";
-          ctx.fillText(label, x, y);
-          ctx.shadowColor = "transparent";
-          ctx.shadowBlur = 0;
-          ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = 0;
+          ctx.font = "bold 10px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(positionChip.text, chipX, chipY);
+
+          ctx.restore();
+
+          // Prévia visual da ficha de posição durante ajuste
+          if (
+            showPositionAdjuster &&
+            selectedPositionChipForAdjustment === slotName
+          ) {
+            const previewChipRadius = 14; // Mesmo tamanho da ficha real
+            const previewX = (positionChipXPercent / 100) * width;
+            const previewY = (positionChipYPercent / 100) * height;
+
+            ctx.save();
+
+            // Círculo amarelo semi-transparente na posição da ficha
+            ctx.fillStyle = "rgba(255, 255, 0, 0.3)";
+            ctx.beginPath();
+            ctx.arc(previewX, previewY, previewChipRadius + 2, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Borda amarela
+            ctx.strokeStyle = "rgba(255, 255, 0, 0.8)";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Texto "D/SB/BB" na prévia
+            ctx.fillStyle = "rgba(255, 255, 0, 0.9)";
+            ctx.font = "bold 12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(positionChip.text, previewX, previewY);
+
+            ctx.restore();
+          }
         }
 
         // Cartas do jogador (hole cards) - menores e mais próximas
@@ -750,58 +1487,8 @@ export function Table({ params, onLeave }: Props) {
       });
     }
 
-    // Pote no centro (muito maior e mais profissional) com fundo escuro para contraste
-    if (pot > 0) {
-      // Fundo escuro para contraste
-      ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-      ctx.beginPath();
-      ctx.arc(centerX, centerY - 40, 60, 0, 2 * Math.PI);
-      ctx.fill();
-
-      // Gradiente do pote
-      const potGradient = ctx.createRadialGradient(
-        centerX,
-        centerY - 40,
-        0,
-        centerX,
-        centerY - 40,
-        50
-      );
-      potGradient.addColorStop(0, "#fbbf24");
-      potGradient.addColorStop(0.7, "#f59e0b");
-      potGradient.addColorStop(1, "#d97706");
-      ctx.fillStyle = potGradient;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY - 40, 50, 0, 2 * Math.PI);
-      ctx.fill();
-
-      // Borda do pote
-      ctx.strokeStyle = "#b45309";
-      ctx.lineWidth = 4;
-      ctx.stroke();
-
-      // Borda interna brilhante
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Texto do pote com sombra
-      ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
-      ctx.shadowBlur = 4;
-      ctx.shadowOffsetX = 2;
-      ctx.shadowOffsetY = 2;
-      ctx.fillStyle = "#000";
-      ctx.font = "bold 22px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("Pote", centerX, centerY - 60);
-      ctx.font = "bold 36px sans-serif";
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(`$${pot}`, centerX, centerY - 20);
-      ctx.shadowColor = "transparent";
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-    }
+    // Pote: apenas o texto (sem retângulo)
+    // O texto do pote é renderizado como componente React abaixo
 
     // Cartas comunitárias agora são renderizadas como componentes React acima do canvas
 
@@ -845,7 +1532,40 @@ export function Table({ params, onLeave }: Props) {
     selectedPlayerForPositioning,
     autoDetectMode,
     detectedPositions,
+    redrawTick,
   ]);
+
+  // Ref para evitar animar a mesma ação mais de uma vez
+  const prevRecentLenRef = useRef<number>(0);
+
+  // Tipos e estados de animação (cartas e fichas)
+  type AnimCard = { id: string; x: number; y: number; opacity: number };
+  type AnimChip = { id: string; x: number; y: number; opacity: number };
+  const [dealAnims, setDealAnims] = useState<AnimCard[]>([]);
+  const [chipAnims, setChipAnims] = useState<AnimChip[]>([]);
+  // (redrawTick duplicado removido, já declarado acima)
+
+  // Posição efetiva do pote vinda do CUSTOM_POSITIONS (se existir)
+  const effectivePotXPercent =
+    customPositions["Pot"] && typeof customPositions["Pot"].x === "number"
+      ? customPositions["Pot"].x
+      : potXPercent;
+  const effectivePotYPercent =
+    customPositions["Pot"] && typeof customPositions["Pot"].y === "number"
+      ? customPositions["Pot"].y
+      : potYPercent;
+
+  // Posição efetiva do texto do pote: usa CUSTOM_POSITIONS["PotValue"] se existir, senão usa o centro do retângulo do pote
+  const effectivePotValueXPercent =
+    customPositions["PotValue"] &&
+    typeof customPositions["PotValue"].x === "number"
+      ? customPositions["PotValue"].x
+      : effectivePotXPercent; // Centro do retângulo do pote
+  const effectivePotValueYPercent =
+    customPositions["PotValue"] &&
+    typeof customPositions["PotValue"].y === "number"
+      ? customPositions["PotValue"].y
+      : effectivePotYPercent; // Centro do retângulo do pote
 
   return (
     <div className="min-h-screen p-4 flex flex-col gap-4 w-[90%] mx-auto">
@@ -1099,14 +1819,12 @@ export function Table({ params, onLeave }: Props) {
                 <button
                   className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
                   onClick={() => {
-                    localStorage.setItem(
-                      "poker_custom_positions",
-                      JSON.stringify(customPositions)
+                    alert(
+                      "Posições customizadas aplicadas! Use 'Gerar Código das Posições Marcadas' para tornar permanente no código."
                     );
-                    alert("Posições customizadas salvas!");
                   }}
                 >
-                  Salvar Posições
+                  Posições Aplicadas
                 </button>
                 {useCustomPositions &&
                   Object.keys(customPositions).length > 0 && (
@@ -1197,6 +1915,22 @@ export function Table({ params, onLeave }: Props) {
                         let calculatedStretchFactor = 1.03;
 
                         // Gera código com as posições customizadas
+                        // Verifica se há stacks salvos
+                        const stacksInCustom = Object.keys(
+                          customPositions
+                        ).filter((k) => k.startsWith("Stack "));
+                        const numStacks = stacksInCustom.length;
+                        console.log(
+                          "Stacks salvos ao gerar código:",
+                          stacksInCustom,
+                          "Total:",
+                          numStacks
+                        );
+                        console.log(
+                          "customPositions completo:",
+                          customPositions
+                        );
+
                         const code = `// Posições customizadas geradas a partir das posições marcadas
 // Substitua os valores no objeto DEFAULT_POSITIONS no início do componente
 const DEFAULT_POSITIONS = {
@@ -1213,8 +1947,14 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
                         navigator.clipboard
                           .writeText(code)
                           .then(() => {
+                            const stacksMessage =
+                              numStacks > 0
+                                ? `\n\nStacks incluídos: ${numStacks} (${stacksInCustom.join(
+                                    ", "
+                                  )})`
+                                : "\n\n⚠️ Nenhum stack foi salvo! Certifique-se de salvar os stacks antes de gerar o código.";
                             alert(
-                              `Código gerado e copiado!\n\n` +
+                              `Código gerado e copiado!${stacksMessage}\n\n` +
                                 `Valores calculados:\n` +
                                 `- radiusX: ${avgRadiusX.toFixed(6)}\n` +
                                 `- radiusY: ${avgRadiusY.toFixed(6)}\n` +
@@ -1225,7 +1965,7 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
                                   6
                                 )}\n\n` +
                                 `O código inclui também as posições exatas em CUSTOM_POSITIONS.\n` +
-                                `Cole no código para substituir DEFAULT_POSITIONS.`
+                                `⚠️ IMPORTANTE: Cole o código no arquivo e RECARREGUE A PÁGINA (F5) para que as mudanças sejam aplicadas!`
                             );
                           })
                           .catch(() => {
@@ -1268,7 +2008,8 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
                       setAutoDetectMode(false);
                       setSelectedPlayerForPositioning(null);
                       setDetectedPositions([]);
-                      localStorage.removeItem("poker_custom_positions");
+                      // Reseta para CUSTOM_POSITIONS do código
+                      setCustomPositions(CUSTOM_POSITIONS);
                     }
                   }}
                 >
@@ -1540,6 +2281,454 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
               </button>
             </div>
           </div>
+
+          {/* Seção de Ajuste de Posição do Pote */}
+          <div className="mt-6 pt-6 border-t">
+            <div className="font-semibold mb-3">Ajuste de Posição do Pote</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Pote X (%): {potXPercent.toFixed(1)}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={potXPercent}
+                  onChange={(e) => setPotXPercent(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Pote Y (%): {potYPercent.toFixed(1)}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={potYPercent}
+                  onChange={(e) => setPotYPercent(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex items-end gap-2 flex-wrap">
+                <button
+                  className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+                  onClick={() => {
+                    // Sincroniza estados com CUSTOM_POSITIONS["Pot"]
+                    const newCustom = {
+                      ...customPositions,
+                      Pot: { x: potXPercent, y: potYPercent },
+                    } as typeof customPositions;
+                    setCustomPositions(newCustom);
+                    alert(
+                      "Posição do pote aplicada. Gere o código para tornar permanente."
+                    );
+                  }}
+                >
+                  Salvar posição do pote
+                </button>
+                <button
+                  className="px-3 py-1 bg-gray-200 rounded text-sm"
+                  onClick={() => {
+                    setPotXPercent(50);
+                    setPotYPercent(45);
+                  }}
+                >
+                  Resetar pote
+                </button>
+                <button
+                  className={`px-3 py-1 rounded text-sm ${
+                    clickToPositionPotBase
+                      ? "bg-green-600 text-white"
+                      : "bg-gray-200"
+                  }`}
+                  onClick={() => setClickToPositionPotBase((v) => !v)}
+                >
+                  {clickToPositionPotBase
+                    ? "Clique na mesa para posicionar (ativo)"
+                    : "Clique para posicionar na mesa"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Seção de Ajuste de Posição das Fichas de Posição (D/SB/BB) */}
+          <div className="mt-6 pt-6 border-t">
+            <div className="font-semibold mb-3">
+              Ajuste de Posição das Fichas de Posição (D/SB/BB)
+            </div>
+            <div className="text-xs text-gray-600 mb-4">
+              Selecione um jogador para ajustar a posição da ficha de posição
+              (Dealer, Small Blind ou Big Blind).
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs font-medium mb-1">
+                Selecionar Jogador/Slot:
+              </label>
+              <select
+                className="border rounded px-2 py-1 text-sm w-full"
+                value={selectedPositionChipForAdjustment || ""}
+                onChange={(e) =>
+                  setSelectedPositionChipForAdjustment(e.target.value || null)
+                }
+              >
+                <option value="">-- Selecione um jogador/slot --</option>
+                {Array.from({ length: MAX_PLAYERS }, (_, i) => {
+                  const slotName = `Slot ${i + 1}`;
+                  const realPlayer = players[i];
+                  return (
+                    <option key={slotName} value={slotName}>
+                      {slotName} {realPlayer ? `(${realPlayer})` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            {selectedPositionChipForAdjustment && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Ficha X (%): {positionChipXPercent.toFixed(1)}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={positionChipXPercent}
+                    onChange={(e) =>
+                      setPositionChipXPercent(Number(e.target.value))
+                    }
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Ficha Y (%): {positionChipYPercent.toFixed(1)}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={positionChipYPercent}
+                    onChange={(e) =>
+                      setPositionChipYPercent(Number(e.target.value))
+                    }
+                    className="w-full"
+                  />
+                </div>
+                <div className="flex items-end gap-2 flex-wrap">
+                  <button
+                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+                    onClick={() => {
+                      if (selectedPositionChipForAdjustment) {
+                        const positionChipKey = `PositionChip ${selectedPositionChipForAdjustment}`;
+                        const savedPos = {
+                          x: positionChipXPercent,
+                          y: positionChipYPercent,
+                        };
+                        const newCustom = {
+                          ...customPositions,
+                          [positionChipKey]: savedPos,
+                        } as any;
+                        setCustomPositions(newCustom);
+                        alert(
+                          `Posição da ficha de posição ${selectedPositionChipForAdjustment} aplicada. Gere o código para tornar permanente.`
+                        );
+                      }
+                    }}
+                  >
+                    Salvar Ficha
+                  </button>
+                  <button
+                    className="px-3 py-1 bg-gray-200 rounded text-sm"
+                    onClick={() => {
+                      if (selectedPositionChipForAdjustment) {
+                        const slotPos =
+                          customPositions[selectedPositionChipForAdjustment];
+                        if (
+                          slotPos &&
+                          typeof slotPos.x === "number" &&
+                          typeof slotPos.y === "number"
+                        ) {
+                          setPositionChipXPercent(slotPos.x - 5); // Offset padrão à esquerda
+                          setPositionChipYPercent(slotPos.y + 10); // Offset padrão abaixo
+                        } else {
+                          setPositionChipXPercent(50);
+                          setPositionChipYPercent(50);
+                        }
+                      }
+                    }}
+                  >
+                    Resetar
+                  </button>
+                  <button
+                    className={`px-3 py-1 rounded text-sm ${
+                      clickToPositionChip && selectedPositionChipForAdjustment
+                        ? "bg-green-600 text-white"
+                        : "bg-gray-200"
+                    }`}
+                    onClick={() => {
+                      if (selectedPositionChipForAdjustment) {
+                        setClickToPositionChip((v) => !v);
+                      } else {
+                        alert("Selecione um jogador/slot primeiro.");
+                      }
+                    }}
+                    disabled={!selectedPositionChipForAdjustment}
+                  >
+                    {clickToPositionChip && selectedPositionChipForAdjustment
+                      ? "Clique na mesa para posicionar (ativo)"
+                      : "Clique para posicionar na mesa"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Seção de Ajuste de Posição dos Stacks de Fichas */}
+          <div className="mt-6 pt-6 border-t">
+            <div className="font-semibold mb-3">
+              Ajuste de Posição e Rotação dos Stacks de Fichas
+            </div>
+            <div className="text-xs text-gray-600 mb-4">
+              Selecione um jogador para ajustar a posição e rotação do stack de
+              fichas dele.
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs font-medium mb-1">
+                Selecionar Jogador/Slot:
+              </label>
+              <select
+                className="border rounded px-2 py-1 text-sm w-full"
+                value={selectedStackForAdjustment || ""}
+                onChange={(e) =>
+                  setSelectedStackForAdjustment(e.target.value || null)
+                }
+              >
+                <option value="">-- Selecione um jogador/slot --</option>
+                {Array.from({ length: MAX_PLAYERS }, (_, i) => {
+                  const slotName = `Slot ${i + 1}`;
+                  const realPlayer = players[i];
+                  return (
+                    <option key={slotName} value={slotName}>
+                      {slotName} {realPlayer ? `(${realPlayer})` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            {selectedStackForAdjustment && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Stack X (%): {stackXPercent.toFixed(1)}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={stackXPercent}
+                    onChange={(e) => setStackXPercent(Number(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Stack Y (%): {stackYPercent.toFixed(1)}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={stackYPercent}
+                    onChange={(e) => setStackYPercent(Number(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Rotação (graus): {stackRotationDeg.toFixed(0)}°
+                  </label>
+                  <input
+                    type="range"
+                    min="-180"
+                    max="180"
+                    step="1"
+                    value={stackRotationDeg}
+                    onChange={(e) =>
+                      setStackRotationDeg(Number(e.target.value))
+                    }
+                    className="w-full"
+                  />
+                </div>
+                <div className="flex items-end gap-2 flex-wrap">
+                  <button
+                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+                    onClick={() => {
+                      if (selectedStackForAdjustment) {
+                        const stackKey = `Stack ${selectedStackForAdjustment}`;
+                        const savedPos = {
+                          x: stackXPercent,
+                          y: stackYPercent,
+                          angle: (stackRotationDeg * Math.PI) / 180,
+                        };
+                        console.log(
+                          `Salvando stack ${selectedStackForAdjustment}:`,
+                          savedPos
+                        );
+                        const newCustom = {
+                          ...customPositions,
+                          [stackKey]: savedPos,
+                        } as any;
+                        console.log(
+                          "Novo customPositions após salvar stack:",
+                          newCustom
+                        );
+                        setCustomPositions(newCustom);
+
+                        // Verifica imediatamente se foi salvo
+                        setTimeout(() => {
+                          console.log(
+                            "customPositions após setState:",
+                            newCustom
+                          );
+                          const stacksSaved = Object.keys(newCustom).filter(
+                            (k) => k.startsWith("Stack ")
+                          );
+                          console.log("Stacks salvos:", stacksSaved);
+                        }, 100);
+
+                        alert(
+                          `Posição do stack ${selectedStackForAdjustment} aplicada. Total de stacks salvos: ${
+                            Object.keys(newCustom).filter((k) =>
+                              k.startsWith("Stack ")
+                            ).length
+                          }. Gere o código para tornar permanente.`
+                        );
+                      }
+                    }}
+                  >
+                    Salvar Stack
+                  </button>
+                  <button
+                    className="px-3 py-1 bg-gray-200 rounded text-sm"
+                    onClick={() => {
+                      if (selectedStackForAdjustment) {
+                        const slotNum = parseInt(
+                          selectedStackForAdjustment.replace("Slot ", "")
+                        );
+                        const slotPos =
+                          customPositions[selectedStackForAdjustment];
+                        if (
+                          slotPos &&
+                          typeof slotPos.x === "number" &&
+                          typeof slotPos.y === "number"
+                        ) {
+                          setStackXPercent(slotPos.x);
+                          setStackYPercent(slotPos.y);
+                        } else {
+                          setStackXPercent(50);
+                          setStackYPercent(50);
+                        }
+                        setStackRotationDeg(0);
+                      }
+                    }}
+                  >
+                    Resetar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Seção de Ajuste de Posição do Texto do Pote */}
+          <div className="mt-6 pt-6 border-t">
+            <div className="font-semibold mb-3">
+              Ajuste de Posição do Texto do Pote
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Valor X (%): {potValueXPercent.toFixed(1)}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={potValueXPercent}
+                  onChange={(e) => setPotValueXPercent(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Valor Y (%): {potValueYPercent.toFixed(1)}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={potValueYPercent}
+                  onChange={(e) => setPotValueYPercent(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex items-end gap-2 flex-wrap">
+                <button
+                  className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+                  onClick={() => {
+                    // Sincroniza estados com CUSTOM_POSITIONS["PotValue"]
+                    const newCustom = {
+                      ...customPositions,
+                      PotValue: { x: potValueXPercent, y: potValueYPercent },
+                    } as typeof customPositions;
+                    setCustomPositions(newCustom);
+                    alert(
+                      "Posição do texto do pote aplicada. Gere o código para tornar permanente."
+                    );
+                  }}
+                >
+                  Salvar posição do valor
+                </button>
+                <button
+                  className="px-3 py-1 bg-gray-200 rounded text-sm"
+                  onClick={() => {
+                    // Reseta para o centro do retângulo do pote
+                    setPotValueXPercent(effectivePotXPercent);
+                    setPotValueYPercent(effectivePotYPercent);
+                    // Remove posição customizada
+                    const newCustom = { ...customPositions };
+                    delete newCustom["PotValue"];
+                    setCustomPositions(newCustom);
+                  }}
+                >
+                  Centralizar no pote
+                </button>
+                <button
+                  className={`px-3 py-1 rounded text-sm ${
+                    clickToPositionPotValue
+                      ? "bg-green-600 text-white"
+                      : "bg-gray-200"
+                  }`}
+                  onClick={() => setClickToPositionPotValue((v) => !v)}
+                >
+                  {clickToPositionPotValue
+                    ? "Clique na mesa para posicionar (ativo)"
+                    : "Clique para posicionar na mesa"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
       <div className="border rounded p-3 bg-gray-50">
@@ -1556,15 +2745,18 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
             backgroundSize: "contain",
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
-            aspectRatio: "1.82 / 1", // Proporção da mesa de poker (largura:altura)
+            aspectRatio: "1.82 / 1",
             boxShadow:
               "0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 100px rgba(0, 0, 0, 0.3)",
             position: "relative",
             border: "6px solid #654321",
-            backgroundColor: "#0d4a2e", // Fallback se imagem não existir
+            backgroundColor: "#0d4a2e",
             cursor:
               autoDetectMode ||
-              (clickToPositionMode && selectedPlayerForPositioning)
+              (clickToPositionMode && selectedPlayerForPositioning) ||
+              clickToPositionPotValue ||
+              clickToPositionPotBase ||
+              (clickToPositionChip && selectedPositionChipForAdjustment)
                 ? "crosshair"
                 : "default",
           }}
@@ -1703,6 +2895,75 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
               setTimeout(() => {
                 feedback.remove();
               }, 500);
+            }
+            // Clique para posicionar o valor do pote
+            if (clickToPositionPotValue) {
+              const wrapper = e.currentTarget as HTMLDivElement;
+              const rect = wrapper.getBoundingClientRect();
+              const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+              const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+              setPotValueXPercent(xPct);
+              setPotValueYPercent(yPct);
+              // Atualiza também em CUSTOM_POSITIONS["PotValue"]
+              const newCustom = {
+                ...customPositions,
+                PotValue: { x: xPct, y: yPct },
+              } as typeof customPositions;
+              setCustomPositions(newCustom);
+              setClickToPositionPotValue(false);
+              return;
+            }
+
+            // Clique para posicionar a ficha de posição (D/SB/BB)
+            if (clickToPositionChip && selectedPositionChipForAdjustment) {
+              const wrapper = e.currentTarget as HTMLDivElement;
+              const rect = wrapper.getBoundingClientRect();
+              const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+              const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+              setPositionChipXPercent(xPct);
+              setPositionChipYPercent(yPct);
+              // Atualiza também em customPositions
+              const positionChipKey = `PositionChip ${selectedPositionChipForAdjustment}`;
+              const newCustom = {
+                ...customPositions,
+                [positionChipKey]: { x: xPct, y: yPct },
+              } as any;
+              setCustomPositions(newCustom);
+              setClickToPositionChip(false);
+              alert(
+                `Posição da ficha de posição ${selectedPositionChipForAdjustment} aplicada.`
+              );
+              return;
+            }
+
+            // Clique para posicionar a base do pote
+            if (clickToPositionPotBase) {
+              const wrapper = e.currentTarget as HTMLDivElement;
+              const rect = wrapper.getBoundingClientRect();
+              const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+              const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+              setPotXPercent(xPct);
+              setPotYPercent(yPct);
+              // Atualiza também em CUSTOM_POSITIONS["Pot"]
+              const newCustom = {
+                ...customPositions,
+                Pot: { x: xPct, y: yPct },
+              } as typeof customPositions;
+              setCustomPositions(newCustom);
+              try {
+                localStorage.setItem(
+                  "poker_custom_positions",
+                  JSON.stringify(newCustom)
+                );
+              } catch {}
+              try {
+                localStorage.setItem(
+                  "poker_pot_position",
+                  JSON.stringify({ potXPercent: xPct, potYPercent: yPct })
+                );
+              } catch {}
+              setClickToPositionPotBase(false);
+              return;
             }
           }}
         >
@@ -2048,6 +3309,66 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
             );
           })()}
 
+          {/* Animações de cartas sendo distribuídas pelo croupier */}
+          {dealAnims.map((anim) => {
+            const wrapper = document.getElementById("table-canvas-wrapper");
+            if (!wrapper) return null;
+            const w = wrapper.clientWidth;
+            const h = wrapper.clientHeight;
+            // anim.x e anim.y já estão em pixels (coordenadas absolutas)
+            const x = (anim.x / w) * 100;
+            const y = (anim.y / h) * 100;
+            return (
+              <div
+                key={anim.id}
+                className="absolute pointer-events-none"
+                style={{
+                  left: `${x}%`,
+                  top: `${y}%`,
+                  transform: "translate(-50%, -50%)",
+                  zIndex: 55,
+                  opacity: anim.opacity,
+                  transition: "all 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
+                }}
+              >
+                <ProfessionalCard card="back" width={60} height={84} />
+              </div>
+            );
+          })}
+
+          {/* Animações de fichas indo para o pote */}
+          {chipAnims.map((anim) => {
+            const wrapper = document.getElementById("table-canvas-wrapper");
+            if (!wrapper) return null;
+            const w = wrapper.clientWidth;
+            const h = wrapper.clientHeight;
+            const x = (anim.x / w) * 100;
+            const y = (anim.y / h) * 100;
+            return (
+              <div
+                key={anim.id}
+                className="absolute pointer-events-none"
+                style={{
+                  left: `${x}%`,
+                  top: `${y}%`,
+                  transform: "translate(-50%, -50%)",
+                  zIndex: 54,
+                  opacity: anim.opacity,
+                }}
+              >
+                <div
+                  className="w-5 h-3 rounded-full"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)",
+                    border: "2px solid #92400e",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                  }}
+                />
+              </div>
+            );
+          })}
+
           {/* Cartas do jogador atual e botões de ação - dentro do container da mesa */}
           {hole.length > 0 && (
             <div className="absolute bottom-4 right-4 flex flex-col items-end gap-3 z-50 min-w-[280px]">
@@ -2331,6 +3652,38 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
       >
         Dizer olá
       </button>
+      {/* Preview do texto do pote durante ajuste (sombra) */}
+      {showPositionAdjuster && (
+        <div
+          className="absolute text-white font-bold text-2xl drop-shadow-lg pointer-events-none"
+          style={{
+            left: `${potValueXPercent}%`,
+            top: `${potValueYPercent}%`,
+            transform: "translate(-50%, -50%)", // Centraliza o texto no ponto
+            zIndex: 59, // Abaixo do texto real
+            opacity: 0.5, // Preview semi-transparente
+            color: "#ffff00", // Amarelo para destacar o preview
+          }}
+        >
+          Pote: ${pot || 0}
+        </div>
+      )}
+      {/* Texto real do pote */}
+      {pot > 0 && (
+        <div
+          className="absolute text-white font-bold text-2xl drop-shadow-lg pointer-events-auto"
+          style={{
+            left: `${effectivePotValueXPercent}%`,
+            top: `${effectivePotValueYPercent}%`,
+            transform: "translate(-50%, -50%)", // Centraliza o texto no ponto
+            zIndex: 60, // Acima das cartas comunitárias
+            cursor: clickToPositionPotValue ? "crosshair" : "default",
+            opacity: showPositionAdjuster ? 0.3 : 1, // Semi-transparente durante ajuste para ver o preview
+          }}
+        >
+          Pote: ${pot}
+        </div>
+      )}
     </div>
   );
 }
