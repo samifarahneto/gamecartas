@@ -54,6 +54,7 @@ export function Table({ params, onLeave }: Props) {
         const parsed = JSON.parse(saved);
         return {
           communityCardOffsetY: parsed.communityCardOffsetY ?? 15,
+          communityCardOffsetX: parsed.communityCardOffsetX ?? 0,
           playerCardOffsetTop: parsed.playerCardOffsetTop ?? 30,
           playerCardOffsetBottom: parsed.playerCardOffsetBottom ?? -90,
         };
@@ -63,6 +64,7 @@ export function Table({ params, onLeave }: Props) {
     }
     return {
       communityCardOffsetY: 15,
+      communityCardOffsetX: 0,
       playerCardOffsetTop: 30,
       playerCardOffsetBottom: -90,
     };
@@ -71,6 +73,9 @@ export function Table({ params, onLeave }: Props) {
   const savedCardPositions = loadCardPositions();
   const [communityCardOffsetY, setCommunityCardOffsetY] = useState<number>(
     savedCardPositions.communityCardOffsetY
+  );
+  const [communityCardOffsetX, setCommunityCardOffsetX] = useState<number>(
+    savedCardPositions.communityCardOffsetX
   );
   const [playerCardOffsetTop, setPlayerCardOffsetTop] = useState<number>(
     savedCardPositions.playerCardOffsetTop
@@ -82,57 +87,57 @@ export function Table({ params, onLeave }: Props) {
   // Posições customizadas geradas a partir das posições marcadas
   // Substitua os valores no objeto DEFAULT_POSITIONS no início do componente
   const DEFAULT_POSITIONS = {
-    radiusX: 0.550261,
-    radiusY: 0.345168,
-    angleOffset: 0.007737504430679,
+    radiusX: 0.541661,
+    radiusY: 0.348744,
+    angleOffset: 0.014066292748709,
     stretchFactor: 1.03,
   };
 
   // Posições exatas (para uso direto se preferir)
   const CUSTOM_POSITIONS = {
     Croupier: {
-      x: 50.162263286499694,
-      y: 11.856823266219239,
+      x: 50.284437996334766,
+      y: 12.97539149888143,
     },
     guest: {
       x: 78.92544243589428,
       y: 25.4865778201927,
     },
     "Slot 1": {
-      x: 69.51345755693582,
-      y: 14.642857142857144,
+      x: 67.6943341478314,
+      y: 13.870246085011187,
     },
     "Slot 2": {
-      x: 80.69358178053831,
-      y: 29.82142857142857,
+      x: 81.50007635919366,
+      y: 27.181208053691275,
     },
     "Slot 3": {
-      x: 80.69358178053831,
-      y: 66.60714285714285,
+      x: 79.78963042150275,
+      y: 72.03579418344519,
     },
     "Slot 4": {
-      x: 69.40993788819875,
-      y: 83.39285714285715,
+      x: 65.18975259621259,
+      y: 79.53020134228188,
     },
     "Slot 5": {
-      x: 49.94824016563147,
-      y: 84.28571428571429,
+      x: 49.368127672571774,
+      y: 79.19463087248322,
     },
     "Slot 6": {
-      x: 30.693581780538302,
-      y: 83.03571428571429,
+      x: 33.11889126450825,
+      y: 78.29977628635348,
     },
     "Slot 7": {
-      x: 18.99585921325052,
-      y: 66.78571428571428,
+      x: 19.61858582773366,
+      y: 69.57494407158836,
     },
     "Slot 8": {
-      x: 19.306418219461698,
-      y: 30.357142857142854,
+      x: 18.824450213805743,
+      y: 25.838926174496645,
     },
     "Slot 9": {
-      x: 30.07246376811594,
-      y: 14.464285714285715,
+      x: 28.231902871105678,
+      y: 14.317673378076062,
     },
   };
 
@@ -1426,7 +1431,7 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
             <div className="font-semibold mb-3">
               Ajuste de Posicionamento das Cartas
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">
                   Cartas Comunitárias (Y): {communityCardOffsetY}px
@@ -1443,7 +1448,26 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
                   className="w-full"
                 />
                 <div className="text-xs text-gray-500 mt-1">
-                  Offset vertical das cartas comunitárias (centro da mesa)
+                  Offset vertical das cartas comunitárias
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Cartas Comunitárias (X): {communityCardOffsetX}px
+                </label>
+                <input
+                  type="range"
+                  min="-200"
+                  max="200"
+                  step="1"
+                  value={communityCardOffsetX}
+                  onChange={(e) =>
+                    setCommunityCardOffsetX(Number(e.target.value))
+                  }
+                  className="w-full"
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  Offset horizontal das cartas comunitárias
                 </div>
               </div>
               <div>
@@ -1493,6 +1517,7 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
                     "poker_card_positions",
                     JSON.stringify({
                       communityCardOffsetY,
+                      communityCardOffsetX,
                       playerCardOffsetTop,
                       playerCardOffsetBottom,
                     })
@@ -1506,6 +1531,7 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
                 className="px-3 py-1 bg-gray-200 rounded text-sm"
                 onClick={() => {
                   setCommunityCardOffsetY(15);
+                  setCommunityCardOffsetX(0);
                   setPlayerCardOffsetTop(30);
                   setPlayerCardOffsetBottom(-90);
                 }}
@@ -1527,7 +1553,7 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
           style={{
             backgroundImage:
               "url('/images/poker-table.jpg'), url('/images/poker-table.png'), url('/images/poker-table.webp')",
-            backgroundSize: "cover",
+            backgroundSize: "contain",
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
             aspectRatio: "1.82 / 1", // Proporção da mesa de poker (largura:altura)
@@ -1988,49 +2014,63 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
             })()}
 
           {/* Cartas comunitárias */}
-          {community.length > 0 && (
-            <div
-              className="absolute inset-0 flex items-center justify-center pointer-events-none"
-              style={{ zIndex: 10 }}
-            >
+          {(() => {
+            // No modo de ajuste, mostra todas as 5 cartas (flop, turn, river)
+            // Mesmo que ainda não tenham sido reveladas
+            const cardsToShow = showPositionAdjuster
+              ? Array.from({ length: 5 }, (_, i) => community[i] || "back") // Mostra 5 cartas, usando "back" para as não reveladas
+              : community; // Fora do modo de ajuste, mostra apenas as reveladas
+
+            if (cardsToShow.length === 0 && !showPositionAdjuster) return null;
+
+            return (
               <div
-                className="flex gap-2.5"
-                style={{ marginTop: `${communityCardOffsetY}px` }}
+                className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                style={{ zIndex: 10 }}
               >
-                {community.map((card, idx) => (
-                  <ProfessionalCard
-                    key={idx}
-                    card={card}
-                    width={75}
-                    height={105}
-                  />
-                ))}
+                <div
+                  className="flex gap-2.5"
+                  style={{
+                    marginTop: `${communityCardOffsetY}px`,
+                    marginLeft: `${communityCardOffsetX}px`,
+                  }}
+                >
+                  {cardsToShow.map((card, idx) => (
+                    <ProfessionalCard
+                      key={idx}
+                      card={card}
+                      width={90}
+                      height={126}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Cartas do jogador atual e botões de ação - dentro do container da mesa */}
           {hole.length > 0 && (
-            <div className="absolute bottom-4 right-4 flex flex-col items-end gap-3 z-50">
+            <div className="absolute bottom-4 right-4 flex flex-col items-end gap-3 z-50 min-w-[280px]">
               {/* Cartas do jogador */}
-              <div className="flex gap-2">
+              <div className="w-full flex gap-2">
                 {hole.map((card, idx) => (
-                  <ProfessionalCard
-                    key={idx}
-                    card={card}
-                    width={75}
-                    height={105}
-                    isHighlighted={true}
-                  />
+                  <div key={idx} className="flex-1 flex justify-center">
+                    <ProfessionalCard
+                      card={card}
+                      width={120}
+                      height={168}
+                      isHighlighted={false}
+                    />
+                  </div>
                 ))}
               </div>
 
               {/* Botões de ação */}
               {street !== "showdown" && (
-                <div className="border rounded-lg p-4 min-w-[280px] bg-transparent">
+                <div className="border rounded-lg p-4 w-full bg-white shadow-lg">
                   <div className="flex gap-2 mb-2">
                     <button
-                      className="border rounded px-3 py-2"
+                      className="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:hover:bg-gray-400 transition-colors"
                       disabled={toAct !== params.nick || acting}
                       onClick={() => {
                         setActing(true);
@@ -2042,7 +2082,7 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
                       Check
                     </button>
                     <button
-                      className="border rounded px-3 py-2 text-red-700"
+                      className="bg-red-600 text-white rounded px-4 py-2 font-medium hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:hover:bg-gray-400 transition-colors"
                       disabled={toAct !== params.nick || acting}
                       onClick={() => {
                         setActing(true);
@@ -2184,7 +2224,7 @@ const CUSTOM_POSITIONS = ${JSON.stringify(customPositions, null, 2)};`;
 
         <div className="border rounded p-3">
           <div className="font-medium mb-2">Informações</div>
-          {!started ? (
+          {!started && players.length > 0 ? (
             <button
               className="bg-blue-600 text-white rounded p-2 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={

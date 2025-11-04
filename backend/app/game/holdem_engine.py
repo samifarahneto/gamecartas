@@ -110,13 +110,19 @@ class HoldemTableState:
             return  # não reseta bets no showdown
 
         # reset round bets when moving streets (flop, turn, river)
+        # CRÍTICO: Resetar bets de TODOS os jogadores ativos, não apenas dos que estão em self.bets
         if self.street in ("flop", "turn", "river"):
-            for p in list(self.bets.keys()):
-                self.bets[p] = 0
-            # Ação começa no primeiro jogador ativo à esquerda do botão
+            # Resetar bets de TODOS os jogadores (ativos e all-in) para garantir limpeza completa
+            # Isso evita que bets residuais de jogadores all-in afetem a nova rodada
+            for p in self.players:
+                if not self.folded.get(p, False):
+                    self.bets[p] = 0  # Garante que todos os ativos (incluindo all-in) têm bet = 0
+            
+            # Ação começa no primeiro jogador ativo à esquerda do dealer (small blind position)
             self.current_index = (self.dealer_index + 1) % len(self.players)
-            # Pula jogadores que foldaram
-            while self.folded.get(self.players[self.current_index], False):
+            # Pula jogadores que foldaram ou estão all-in
+            while (self.folded.get(self.players[self.current_index], False) or 
+                   self.all_in.get(self.players[self.current_index], False)):
                 self.current_index = (self.current_index + 1) % len(self.players)
             self.last_action_index = self.current_index
             self.recent_actions = []  # limpa ações ao mudar de street
@@ -139,13 +145,25 @@ class HoldemTableState:
         return (idx + 1) % len(self.players)
 
     def highest_bet(self) -> int:
-        return max(self.bets.values()) if self.bets else 0
+        """Retorna a maior aposta da rodada atual, considerando apenas jogadores ativos (não foldados e não all-in que já agiram)"""
+        if not self.bets:
+            return 0
+        # Considera apenas jogadores ativos (não foldados) para calcular highest_bet
+        # Jogadores all-in não precisam igualar novas apostas
+        active_bets = {p: self.bets.get(p, 0) for p in self.players 
+                      if not self.folded.get(p, False) and not self.all_in.get(p, False)}
+        if not active_bets:
+            return 0
+        return max(active_bets.values())
     
     def _commit_bet(self, nick: str, amount: int) -> int:
         """Commita aposta do stack, retorna quanto foi realmente pago (pode ser all-in)"""
         stack = self.stacks.get(nick, 0)
         actual_amount = min(amount, stack)
         self.stacks[nick] = stack - actual_amount
+        # Garante que o jogador está no dicionário bets
+        if nick not in self.bets:
+            self.bets[nick] = 0
         self.bets[nick] = self.bets.get(nick, 0) + actual_amount
         self.total_committed[nick] = self.total_committed.get(nick, 0) + actual_amount
         self.pot += actual_amount
@@ -155,6 +173,10 @@ class HoldemTableState:
     
     def call_amount(self, nick: str) -> int:
         """Retorna quanto o jogador precisa pagar para call"""
+        # Garante que o jogador está no dicionário bets
+        if nick not in self.bets:
+            self.bets[nick] = 0
+        
         hb = self.highest_bet()
         current_bet = self.bets.get(nick, 0)
         need = max(0, hb - current_bet)
@@ -192,6 +214,10 @@ class HoldemTableState:
         if self.all_in.get(nick, False):
             return  # jogador já está all-in
         
+        # Garante que o jogador está no dicionário bets
+        if nick not in self.bets:
+            self.bets[nick] = 0
+        
         action_record = {"player": nick, "action": action, "amount": None}
         
         if action == "fold":
@@ -211,6 +237,8 @@ class HoldemTableState:
             action_record["amount"] = actual
             if self.all_in.get(nick, False):
                 action_record["action"] = "all_in"
+            # Avança o índice ANTES de verificar se pode avançar a rodada
+            # Isso garante que a verificação aconteça após a atualização do índice
             self.current_index = self._next_index(self.current_index)
         elif action == "bet":
             # Bet: primeira aposta da rodada (quando não há aposta ainda)
@@ -314,18 +342,46 @@ class HoldemTableState:
         if len(self.recent_actions) > 10:
             self.recent_actions.pop(0)
 
-        # verifica se pode avançar street: todos ativos igualaram e ação voltou ao last_action_index
+        # verifica se pode avançar street: todos ativos igualaram e todos agiram desde o último raise
         active = [p for p in self.players if not self.folded.get(p, False)]
         if len(active) <= 1:
             self.street = "showdown"
             return
         
-        hb = self.highest_bet()
-        all_matched = all(self.bets.get(p, 0) == hb for p in active)
+        # Garante que todos os jogadores ativos estão no dicionário bets
+        for p in active:
+            if p not in self.bets:
+                self.bets[p] = 0
         
-        # só avança se todos igualaram E a ação voltou ao last_action_index (todos agiram)
-        if all_matched and self.current_index == self.last_action_index:
+        hb = self.highest_bet()
+        # Verifica se todos os jogadores ativos (não all-in) têm o mesmo bet
+        active_not_allin = [p for p in active if not self.all_in.get(p, False)]
+        if not active_not_allin:
+            # Todos estão all-in, avança para próxima street
             self.next_street()
+            return
+        
+        all_matched = all(self.bets.get(p, 0) == hb for p in active_not_allin)
+        
+        if not all_matched:
+            # Ainda há jogadores que não igualaram, não avança
+            return
+        
+        # Todos igualaram, agora verifica se todos já agiram desde o último raise/bet
+        # A lógica é: se a ação voltou ao last_action_index, significa que todos agiram
+        
+        # Se a ação voltou ao last_action_index, todos já agiram desde o último raise/bet
+        # Isso significa que a rodada pode avançar
+        if self.current_index == self.last_action_index:
+            self.next_street()
+            return
+        
+        # Caso especial: se não há aposta (hb == 0) e todos deram check,
+        # a rodada deve avançar quando todos agiram
+        # Isso acontece quando current_index voltou ao last_action_index
+        if hb == 0 and self.current_index == self.last_action_index:
+            self.next_street()
+            return
 
     def _best_5_card_hand(self, cards: List[str]) -> Tuple[int, List[int]]:
         """Encontra a melhor combinação de 5 cartas dentre as cartas disponíveis"""

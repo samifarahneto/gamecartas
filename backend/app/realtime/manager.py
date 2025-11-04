@@ -58,9 +58,34 @@ class ConnectionManager:
 
     async def disconnect(self, websocket: WebSocket) -> None:
         for table_id, conns in list(self.tables.items()):
+            # Remove a conexão
+            disconnected_nick = None
+            for c in conns:
+                if c.websocket is websocket:
+                    disconnected_nick = c.nick
+                    break
             self.tables[table_id] = [c for c in conns if c.websocket is not websocket]
             if not self.tables[table_id]:
                 del self.tables[table_id]
+                # Se não há mais conexões, reseta o estado do jogo
+                if table_id in self.holdem_state:
+                    st = self.holdem_state[table_id]
+                    st.started = False
+                    st.community = []
+                    st.hole = {}
+                    st.street = "preflop"
+            else:
+                # Se ainda há conexões mas a mão estava ativa, verifica se precisa resetar
+                if table_id in self.holdem_state:
+                    st = self.holdem_state[table_id]
+                    # Se não há mais jogadores conectados que estavam na mão, reseta
+                    active_players_in_hand = [p for p in st.players if any(c.nick == p for c in self.tables.get(table_id, []))]
+                    if st.started and len(active_players_in_hand) < 2:
+                        st.started = False
+                        st.community = []
+                        st.hole = {}
+                        st.street = "preflop"
+                        await self.broadcast_state(table_id)
 
     async def broadcast(self, table_id: str, message: dict) -> None:
         text = json.dumps(message)
@@ -80,12 +105,21 @@ class ConnectionManager:
 
     async def broadcast_state(self, table_id: str) -> None:
         conns = self.tables.get(table_id, [])
-        players = [c.nick for c in conns]
-        # Hold'em per-connection hole visibility
+        # Usa a lista de jogadores do estado do jogo, não das conexões
+        # Isso garante que apenas jogadores realmente no jogo recebam cartas
         st = self.holdem_state.get(table_id)
+        if st:
+            # Sincroniza jogadores: apenas jogadores conectados E no estado do jogo
+            players = [p for p in st.players if any(c.nick == p for c in conns)]
+        else:
+            # Se não há estado, usa jogadores conectados
+            players = [c.nick for c in conns]
+        
+        # Hold'em per-connection hole visibility
         for c in conns:
             if st and st.started:
-                hole = st.hole.get(c.nick, [])
+                # Só envia cartas se o jogador está realmente no jogo (estava na mesa quando a mão começou)
+                hole = st.hole.get(c.nick, []) if c.nick in st.players else []
                 winners = st.get_winner() if st.street == "showdown" else None
                 call_amt = st.call_amount(c.nick) if c.nick == st.to_act() else None
                 dealer_name = st.players[st.dealer_index] if st.players else None
@@ -206,6 +240,18 @@ class ConnectionManager:
                     # Após ação, verifica se pode avançar automaticamente até showdown
                     await self._auto_advance_to_showdown(st, table_id)
             elif action == "new_hand":
+                # Reseta o estado antes de iniciar nova mão
+                st.started = False
+                st.community = []
+                st.hole = {}
+                st.street = "preflop"
+                st.pot = 0
+                st.bets = {}
+                st.total_committed = {p: 0 for p in st.players}
+                st.folded = {}
+                st.all_in = {p: False for p in st.players}
+                st.recent_actions = []
+                # Inicia nova mão
                 st.start_hand()
             await self.broadcast_state(table_id)
         else:

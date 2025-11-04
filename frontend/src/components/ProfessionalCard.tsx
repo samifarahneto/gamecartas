@@ -94,8 +94,11 @@ export function ProfessionalCard({
   isHighlighted = false,
   className = "",
 }: CardProps) {
-  const rank = card.slice(0, -1);
-  const suit = card.slice(-1);
+  // Verifica se é o verso da carta
+  const isBack = card === "back" || card === "BACK" || card === "";
+
+  const rank = isBack ? "" : card.slice(0, -1);
+  const suit = isBack ? "" : card.slice(-1);
 
   const suitSymbols: Record<string, string> = {
     H: "♥",
@@ -121,7 +124,9 @@ export function ProfessionalCard({
   // Usa um CDN de cartas profissionais ou cria visual local melhorado
   // Formato esperado: AS.png, KH.png, 7D.png, etc.
   const cardForUrl = card; // Já está no formato correto (ex: "AS", "KH")
-  const imageUrl = `https://deckofcardsapi.com/static/img/${cardForUrl}.png`;
+  const imageUrl = isBack
+    ? `https://deckofcardsapi.com/static/img/back.png`
+    : `https://deckofcardsapi.com/static/img/${cardForUrl}.png`;
 
   return (
     <div
@@ -130,10 +135,7 @@ export function ProfessionalCard({
         width: `${width}px`,
         height: `${height}px`,
         position: "relative",
-        filter: isHighlighted
-          ? "drop-shadow(0 8px 16px rgba(16, 185, 129, 0.7)) drop-shadow(0 0 12px rgba(16, 185, 129, 0.5))"
-          : "drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4))",
-        transform: isHighlighted ? "scale(1.08)" : "scale(1)",
+        filter: "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2))",
         transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
         cursor: "pointer",
       }}
@@ -146,33 +148,71 @@ export function ProfessionalCard({
           position: "relative",
           borderRadius: "14px",
           overflow: "hidden",
-          border: isHighlighted ? "4px solid #10b981" : "3px solid #1a1a1a",
-          boxShadow: isHighlighted
-            ? "0 8px 24px rgba(16, 185, 129, 0.4), inset 0 0 0 1px rgba(16, 185, 129, 0.2)"
-            : "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.1)",
+          border: "2px solid #1a1a1a",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)",
           background: "#ffffff",
         }}
       >
-        {/* Imagem da carta profissional */}
-        <img
-          src={imageUrl}
-          alt={card}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-          }}
-          onError={(e) => {
-            // Fallback se imagem não carregar - mostra visual SVG
-            const target = e.target as HTMLImageElement;
-            target.style.display = "none";
-            const fallback = target.nextElementSibling as HTMLElement;
-            if (fallback) {
-              fallback.style.display = "block";
-            }
-          }}
-        />
+        {/* Imagem da carta profissional ou verso */}
+        {isBack ? (
+          // Verso da carta - padrão azul com padrão
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background:
+                "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #1e3a8a 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+            }}
+          >
+            {/* Padrão decorativo do verso */}
+            <div
+              style={{
+                width: "70%",
+                height: "70%",
+                border: "3px solid rgba(255, 255, 255, 0.3)",
+                borderRadius: "8px",
+                background: "rgba(255, 255, 255, 0.1)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: `${width * 0.3}px`,
+                  color: "rgba(255, 255, 255, 0.5)",
+                  fontWeight: "bold",
+                }}
+              >
+                ♠♥
+              </div>
+            </div>
+          </div>
+        ) : (
+          <img
+            src={imageUrl}
+            alt={card}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+            onError={(e) => {
+              // Fallback se imagem não carregar - mostra visual SVG
+              const target = e.target as HTMLImageElement;
+              target.style.display = "none";
+              const fallback = target.nextElementSibling as HTMLElement;
+              if (fallback) {
+                fallback.style.display = "block";
+              }
+            }}
+          />
+        )}
 
         {/* Overlay com fallback SVG se imagem não carregar */}
         <div
